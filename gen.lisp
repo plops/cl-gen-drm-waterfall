@@ -124,7 +124,30 @@ is replaced with replacement."
 			 :return "Integer")
 		  (function (pluto_read ((ctx :type "struct iio_context*"))
 					 int)
-			    
+			    (let ((dev :init (funcall iio_context_find_device ctx (string "cf-ad9361-lpc")))
+				  (re :init (paren-list
+					     (let ((ch :init (funcall iio_device_find_channel
+								      dev (string "voltage0") 0))
+						   )
+					       (funcall iio_channel_enable ch)
+					       (raw "ch"))))
+				  (im :init (paren-list
+					     (let ((ch :init (funcall iio_device_find_channel
+								      dev (string "voltage1") 0))
+						   )
+					       (funcall iio_channel_enable ch)
+					       (raw "ch"))))
+				  (buf :init (funcall iio_device_create_buffer dev 4096 false)))
+			      (while true
+				(funcall iio_buffer_refill buf)
+				(let ((d :init (funcall iio_buffer_step buf))
+				      (e :init (funcall iio_buffer_end buf)))
+				  (for ((p (funcall iio_buffer_first buf re))
+					(< p e)
+					(+= p d))
+				       
+				       )))
+			      (funcall iio_buffer_destroy buf))
 			    (return 0))
 
 		  ,@(dox :brief "close sdr device"
