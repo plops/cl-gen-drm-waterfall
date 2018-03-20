@@ -71,6 +71,9 @@ is replaced with replacement."
 		  (include <xf86drmMode.h>)
 		  (include <i915_drm.h>)
 
+		  (raw " ")
+		  (include <iio.h>)
+		  
 		  (raw "//! This repository contains a minimal program to draw to a linux screen.")
 		  (raw "//! \\section Dependencies ")
 		  (raw "//! - Linux kernel with DRM driver")
@@ -89,6 +92,50 @@ is replaced with replacement."
 		  ,@(loop for i from 1 and e in '("http://betteros.org/tut/graphics1.php")
 		       collect
 			 `(raw ,(format nil "//! ~a. ~a" i e)))
+
+		  ,@(dox :brief "initialize sdc acquisition"
+			 :usage "sets up rx and adc."
+			 :params '((uri "address of the iio device")
+				   (lo "local oscillator frequency")
+				   (fs "adc sample rate"))
+			 :return "iio context")
+		  (function (pluto_init ((uri :type "const char*")
+					 (lo :type uint64_t)
+					 (fs :type uint64_t))
+					
+					"struct iio_context*")
+			    (let ((ctx :init (funcall iio_create_context_from_uri uri))
+				  (phy :init (funcall iio_context_find_device ctx (string "ad9361-phy")))
+				  )
+			      (funcall iio_channel_attr_write_longlong
+				       (funcall iio_device_find_channel phy (string "altvoltage0") true)
+				       (string "frequency")
+				       lo)
+			      (funcall iio_channel_attr_write_longlong
+				       (funcall iio_device_find_channel phy (string "voltage0") true)
+				       (string "sampling_frequency")
+				       fs)
+			     (return ctx)))
+
+
+		  ,@(dox :brief "read from sdr device"
+			 :usage "0 when success"
+			 :params '()
+			 :return "Integer")
+		  (function (pluto_read ((ctx :type "struct iio_context*"))
+					 int)
+			    
+			    (return 0))
+
+		  ,@(dox :brief "close sdr device"
+			 :usage "destroy iio context"
+			 :params '()
+			 :return "Integer")
+		  (function (pluto_close ((ctx :type "struct iio_context*"))
+					 int)
+			    (funcall iio_context_destroy ctx)
+			    (return 0))
+		  
 		  
 		  
 		  ,@(dox :brief "main function"
@@ -98,12 +145,14 @@ is replaced with replacement."
 			 :return "Integer")
 		  		  
 		  (function (main ((argc :type int)
-				   (argv :type char**)) int)
+				   (argv :type char**))
+				  int)
+			    
 			    (if (== 0 (funcall drmAvailable))
 				(macroexpand (er "drm not available")))
 			    
-			    (let ((errno :type
-				    "extern int")
+			    (let ((errno :type "extern int")
+				  (pluto_ctx :init (funcall pluto_init (string "usb:1.4.5") 2400000000 5000000))
 				  (fd :init (paren-list (let ((fd :init (funcall drmOpen (string "i915") nullptr)))
 							  (if (< fd 0)
 							      (macroexpand (er "drmOpen error: fd=" fd " errno=" errno)))
@@ -220,7 +269,8 @@ is replaced with replacement."
 			      (statements
 			       ,@(loop for e in '(plane plane_res fb crtc enc c res) collect
 				      `(funcall drmFree ,e)))
-			      (funcall drmClose fd))
+			      (funcall drmClose fd)
+			      (funcall pluto_close pluto_ctx))
 			    
 			    
 			    
