@@ -374,7 +374,7 @@ is replaced with replacement."
 			      (funcall assert (! (funcall drmModeSetCrtc fd crtc->crtc_id my_fb
 							  0 0 &c->connector_id 1 &crtc->mode)))
 			      (dotimes (k 1)
-				(dotimes (i 120 #+nil creq.height)
+				(dotimes (i creq.height)
 				  (macroexpand (e
 						 "pluto_read"))
 				  (macroexpand (benchmark
@@ -404,14 +404,14 @@ is replaced with replacement."
 				     
 				     
 				     
-				     (let ((mi :init 50s0 #+nil (paren-list
+				     (let ((mi :type "const auto" :init 50s0 #+nil (paren-list
 								 (let ((mi :init (aref m_fft_out_mag 0)))
 								   (dotimes (i M_MAG_N)
 								     (let ((val :init (aref m_fft_out_mag i)))
 								       (if (< val mi)
 									   (setf mi val))))
 								   (raw "mi"))))
-					   (ma :init 0s0 #+nil (paren-list
+					   (ma :type "const auto" :init 0s0 #+nil (paren-list
 								(let ((ma :init (aref m_fft_out_mag 0)))
 								  (dotimes (i M_MAG_N)
 								    (let ((val :init (aref m_fft_out_mag i)))
@@ -421,9 +421,17 @@ is replaced with replacement."
 					   (s :init (/ 255s0 (- ma mi))))
 				       #+nil (macroexpand (e "ma " ma "mi " mi))
 				       (dotimes (j (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
-					 (setf (aref map (+ j (* i (>> creq.pitch 2))))
-					       (* s (- (aref m_fft_out_mag j) mi))
-					       #+nil (+ k (hex #x12345678))))))))
+					 (let ((val :init (paren-list
+							   (let ((red :type "const auto" :init 4)
+								 (acc :init (aref m_fft_out_mag (* red j))))
+							     (dotimes (l red)
+							       (let ((v :init (aref m_fft_out_mag (+ l (* red j)) )))
+								(if (< acc v)
+								    (setf acc v))))
+							     (raw "acc")))))
+					  (setf (aref map (+ j (* i (>> creq.pitch 2))))
+						(* s (- val mi))
+						#+nil (+ k (hex #x12345678)))))))))
 				#+nil (funcall usleep 32000))
 
 			      #+nil (funcall sleep 1)
