@@ -357,33 +357,55 @@ is replaced with replacement."
 							  0 0 &c->connector_id 1 &crtc->mode)))
 			      (dotimes (k 1)
 				(dotimes (i 120 #+nil creq.height)
+				  (macroexpand (e
+						 "pluto_read"))
+				  (macroexpand (benchmark
+						 (funcall pluto_read pluto_ctx)))
+				  (macroexpand (e
+						 "fft"))
 				  (macroexpand
 				   (benchmark
-				     (funcall pluto_read pluto_ctx)
-				   (funcall fft m_fft_in m_fft_out)
-				   (dotimes  (i M_MAG_N)
-				     (setf (aref m_fft_out_mag i) (* 10 (funcall
-									 "std::log10"
-									 (funcall "std::abs" (aref m_fft_out i))))))
-				   (let ((mi :init (paren-list
-						    (let ((mi :init (aref m_fft_out_mag 0)))
-						      (dotimes (i M_MAG_N)
-							(let ((val :init (aref m_fft_out_mag i)))
-							  (if (< val mi)
-							      (setf mi val))))
-						      (raw "mi"))))
-					 (ma :init (paren-list
-						    (let ((ma :init (aref m_fft_out_mag 0)))
-						      (dotimes (i M_MAG_N)
-							(let ((val :init (aref m_fft_out_mag i)))
-							  (if (< ma val)
-							      (setf ma val))))
-						      (raw "ma"))))
-					 (s :init (/ 255s0 (- ma mi))))
-				     (dotimes (j ,n #+nil creq.width)
-				       (setf (aref map (+ j (* i (>> creq.pitch 2))))
-					     (* s (- (aref m_fft_out_mag j) mi))
-					     #+nil (+ k (hex #x12345678))))))))
+				     
+				     (funcall fft m_fft_in m_fft_out)
+				     ))
+				  (macroexpand (e
+						 "scale"))
+				  (macroexpand
+				   (benchmark
+				     
+				     
+				     (dotimes  (i M_MAG_N)
+				       (setf (aref m_fft_out_mag i) (* 10 (funcall
+									   "std::log10"
+									   (funcall "std::abs" (aref m_fft_out i))))))
+				     ))
+				  (macroexpand (e
+						 "out"))
+				  (macroexpand
+				   (benchmark
+				     
+				     
+				     
+				     (let ((mi :init 50s0 #+nil (paren-list
+								 (let ((mi :init (aref m_fft_out_mag 0)))
+								   (dotimes (i M_MAG_N)
+								     (let ((val :init (aref m_fft_out_mag i)))
+								       (if (< val mi)
+									   (setf mi val))))
+								   (raw "mi"))))
+					   (ma :init 0s0 #+nil (paren-list
+								(let ((ma :init (aref m_fft_out_mag 0)))
+								  (dotimes (i M_MAG_N)
+								    (let ((val :init (aref m_fft_out_mag i)))
+								      (if (< ma val)
+									  (setf ma val))))
+								  (raw "ma"))))
+					   (s :init (/ 255s0 (- ma mi))))
+				       #+nil (macroexpand (e "ma " ma "mi " mi))
+				       (dotimes (j ,n #+nil creq.width)
+					 (setf (aref map (+ j (* i (>> creq.pitch 2))))
+					       (* s (- (aref m_fft_out_mag j) mi))
+					       #+nil (+ k (hex #x12345678))))))))
 				#+nil (funcall usleep 32000))
 
 			      #+nil (funcall sleep 1)
