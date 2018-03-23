@@ -68,7 +68,7 @@ is replaced with replacement."
 
 
 (progn
-  (let* ((n 32)
+  (let* ((n 1024)
 	 (code `(with-compilation-unit
 		    (with-compilation-unit
 			(raw "//! \\file main.cpp Draw to screen using linux direct rendering manager"))
@@ -119,7 +119,7 @@ is replaced with replacement."
 
 		  (decl ((m_fft_in :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
 			 (m_fft_out :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
-			 (m_fft_out2 :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
+			 #+nil (m_fft_out2 :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
 			 (m_fft_out_mag :type "std::array<float,M_MAG_N>" :init (list (list ,@ (loop for i below n collect 0.0))))
 			 ))
 		  (function (current_time () "static inline uint64_t")
@@ -156,34 +156,7 @@ is replaced with replacement."
 						 w (* w w_m)))))))))
 			  ))
 		  
-		  #+nil
-		  (function (main () int)
-
-			    (statements
-			     (dotimes (i M_MAG_N)
-			       (setf (aref m_fft_in i) 0.0
-				     (aref m_fft_out i) 0.0
-				     (aref m_fft_out_mag i) 0.0))
-			     (setf (aref m_fft_in 1) 1.0)
-			     (macroexpand (benchmark
-					   (dotimes (i 10)
-					     (funcall ft m_fft_in m_fft_out)))))
-
-			    (statements
-			     (dotimes (i M_MAG_N)
-			       (setf (aref m_fft_in i) 0.0
-				     (aref m_fft_out2 i) 0.0
-				     (aref m_fft_out_mag i) 0.0))
-			     (setf (aref m_fft_in 1) 1.0)
-			     (macroexpand (benchmark
-					   (dotimes (i 10)
-					     (funcall fft m_fft_in m_fft_out2)))))
-			    
-			    #+nil (dotimes  (i M_MAG_N)
-				    (setf (aref m_fft_out_mag i) (funcall "std::abs" (aref m_fft_out i))))
-			    
-			    (dotimes (i M_MAG_N)
-			      (macroexpand (e (funcall "std::setw" 6) i (funcall "std::setw" 30) (aref m_fft_out i) (funcall "std::setw" 30) (aref m_fft_out2 i)))))
+		  
 		  
 		  ,@(dox :brief "initialize sdc acquisition"
 			 :usage "sets up rx and adc."
@@ -229,18 +202,24 @@ is replaced with replacement."
 						   )
 					       (funcall iio_channel_enable ch)
 					       (raw "ch"))))
-				  (buf :init (funcall iio_device_create_buffer dev 4096 false)))
-			      (while true
+				  (buf :init (funcall iio_device_create_buffer dev ,n false)))
+			      (statements ;while true
 				(funcall iio_buffer_refill buf)
 				(let ((d :init (funcall iio_buffer_step buf))
-				      (e :init (funcall iio_buffer_end buf)))
+				      (e :init (funcall iio_buffer_end buf))
+				      (i :init 0))
 				  (for ((p (funcall iio_buffer_first buf re))
 					(< p e)
-					(+= p d))
+					(+= p d)
+					)
 				       (let ((pi :init (funcall reinterpret_cast<int16_t*> p))
 					     (re :init (aref pi 0))
-					     (im :init (aref pi 1))
-					     ))
+					     (im :init (aref pi 1)))
+					 #+nil (macroexpand (e "i " i))
+					 (setf (aref m_fft_in i) (funcall "std::complex<float>"
+									  re im))
+					 (+= i 1)
+					 )
 				       )))
 			      (funcall iio_buffer_destroy buf))
 			    (return 0))
@@ -265,12 +244,18 @@ is replaced with replacement."
 		  (function (main ((argc :type int)
 				   (argv :type char**))
 				  int)
+
+			    (dotimes (i M_MAG_N)
+			       (setf (aref m_fft_in i) 0.0
+				     (aref m_fft_out i) 0.0
+				     (aref m_fft_out_mag i) 0.0))
 			    
 			    (if (== 0 (funcall drmAvailable))
 				(macroexpand (er "drm not available")))
+
 			    
 			    (let ((errno :type "extern int")
-				  (pluto_ctx :init (funcall pluto_init (string "usb:1.4.5") 2400000000 5000000))
+				  (pluto_ctx :init (funcall pluto_init (string "usb:1.5.5") 2412000000 50000000))
 				  (fd :init (paren-list (let ((fd :init (funcall drmOpen (string "i915") nullptr)))
 							  (if (< fd 0)
 							      (macroexpand (er "drmOpen error: fd=" fd " errno=" errno)))
@@ -361,7 +346,8 @@ is replaced with replacement."
 										 MAP_SHARED fd mreq.offset))))
 						(funcall assert (!= MAP_FAILED map))
 						(funcall memset map 0 creq.size)
-						(raw "map")))))     
+						(raw "map")))))
+			      
 			      
 			      (dotimes (i 256)
 				(dotimes (j 256)
@@ -369,12 +355,36 @@ is replaced with replacement."
 					(hex #x12345678))))
 			      (funcall assert (! (funcall drmModeSetCrtc fd crtc->crtc_id my_fb
 							  0 0 &c->connector_id 1 &crtc->mode)))
-			      (dotimes (k 256)
-				(dotimes (i creq.height)
-				  (dotimes (j creq.width)
-				    (setf (aref map (+ j (* i (>> creq.pitch 2))))
-					  (+ k (hex #x12345678)))))
-				(funcall usleep 32000))
+			      (dotimes (k 1)
+				(dotimes (i 120 #+nil creq.height)
+				  (macroexpand
+				   (benchmark
+				     (funcall pluto_read pluto_ctx)
+				   (funcall fft m_fft_in m_fft_out)
+				   (dotimes  (i M_MAG_N)
+				     (setf (aref m_fft_out_mag i) (* 10 (funcall
+									 "std::log10"
+									 (funcall "std::abs" (aref m_fft_out i))))))
+				   (let ((mi :init (paren-list
+						    (let ((mi :init (aref m_fft_out_mag 0)))
+						      (dotimes (i M_MAG_N)
+							(let ((val :init (aref m_fft_out_mag i)))
+							  (if (< val mi)
+							      (setf mi val))))
+						      (raw "mi"))))
+					 (ma :init (paren-list
+						    (let ((ma :init (aref m_fft_out_mag 0)))
+						      (dotimes (i M_MAG_N)
+							(let ((val :init (aref m_fft_out_mag i)))
+							  (if (< ma val)
+							      (setf ma val))))
+						      (raw "ma"))))
+					 (s :init (/ 255s0 (- ma mi))))
+				     (dotimes (j ,n #+nil creq.width)
+				       (setf (aref map (+ j (* i (>> creq.pitch 2))))
+					     (* s (- (aref m_fft_out_mag j) mi))
+					     #+nil (+ k (hex #x12345678))))))))
+				#+nil (funcall usleep 32000))
 
 			      #+nil (funcall sleep 1)
 			      (funcall assert (! (funcall drmModeSetCrtc fd crtc->crtc_id fb->fb_id
