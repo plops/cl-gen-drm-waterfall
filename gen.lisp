@@ -95,7 +95,7 @@ is replaced with replacement."
 		  (include <array>)
 		  (include <complex>)
 		  (include <sys/time.h>) ;; gettimeofday
-
+		  
 		  (raw "//! This repository contains a minimal program to draw to a linux screen.")
 		  (raw "//! \\section Dependencies ")
 		  (raw "//! - Linux kernel with DRM driver")
@@ -184,47 +184,62 @@ is replaced with replacement."
 
 
 		  ,@(dox :brief "read from sdr device"
-			 :usage "0 when success"
+			 :usage "allocates buffer in first call, reset=true releases that buffer otherwise it will be reused;"
 			 :params '()
-			 :return "Integer")
-		  (function (pluto_read ((ctx :type "struct iio_context*"))
+			 :return "Integer, 0 when success")
+		  (function (pluto_read ((ctx :type "struct iio_context*")
+					 (reset :type "bool" :default false))
 					int)
-			    (let ((dev :init (funcall iio_context_find_device ctx (string "cf-ad9361-lpc")))
-				  (re :init (paren-list
-					     (let ((ch :init (funcall iio_device_find_channel
-								      dev (string "voltage0") 0))
-						   )
-					       (funcall iio_channel_enable ch)
-					       (raw "ch"))))
-				  (im :init (paren-list
-					     (let ((ch :init (funcall iio_device_find_channel
-								      dev (string "voltage1") 0))
-						   )
-					       (funcall iio_channel_enable ch)
-					       (raw "ch"))))
-				  (buf :init (funcall iio_device_create_buffer dev ,n false)))
+			    (let (
+				  (buf :type "static struct iio_buffer*" :init nullptr)
+				  (re :type
+				    "static struct iio_channel*"))
+			      
+			      (if (== nullptr buf)
+				  (statements
+				   (let ((dev :init (funcall iio_context_find_device ctx (string "cf-ad9361-lpc")))
+					 #+nil (re :init (paren-list
+						    (let ((ch :init (funcall iio_device_find_channel
+									     dev (string "voltage0") 0)))
+						      (funcall iio_channel_enable ch)
+						      (raw "ch"))))
+					 #+nil (im :init (paren-list
+						    (let ((ch :init (funcall iio_device_find_channel
+									     dev (string "voltage1") 0)))
+						      (funcall iio_channel_enable ch)
+						      (raw "ch"))))
+					 #+nil (buf :init (funcall iio_device_create_buffer dev ,n false)))
+				     (setf re (paren-list
+					       (let ((ch :init (funcall iio_device_find_channel
+									dev (string "voltage0") 0)))
+						 (funcall iio_channel_enable ch)
+						 (raw "ch")))
+					   buf (funcall iio_device_create_buffer dev ,n false))))
+				  )
 			      (statements ;while true
-			       (macroexpand (e "pluto_read refill"))
-			       (macroexpand (benchmark (funcall iio_buffer_refill buf)))
-			       (macroexpand (e "pluto_read copy"))
-				(macroexpand (benchmark
-					      (let ((d :init (funcall iio_buffer_step buf))
-						    (e :init (funcall iio_buffer_end buf))
-						    (i :init 0))
-						(for ((p (funcall iio_buffer_first buf re))
-						      (< p e)
-						      (+= p d)
-						      )
-						     (let ((pi :init (funcall reinterpret_cast<int16_t*> p))
-							   (re :init (aref pi 0))
-							   (im :init (aref pi 1)))
-						       #+nil (macroexpand (e "i " i))
-						       (setf (aref m_fft_in i) (funcall "std::complex<float>"
-											re im))
-						       (+= i 1)
-						       )
-						     )))))
-			      (funcall iio_buffer_destroy buf))
+				   (macroexpand (e "pluto_read refill"))
+				   (macroexpand (benchmark (funcall iio_buffer_refill buf)))
+				   (macroexpand (e "pluto_read copy"))
+				   (macroexpand (benchmark
+						  (let ((d :init (funcall iio_buffer_step buf))
+							(e :init (funcall iio_buffer_end buf))
+							(i :init 0))
+						    (for ((p (funcall iio_buffer_first buf re))
+							  (< p e)
+							  (+= p d)
+							  )
+							 (let ((pi :init (funcall reinterpret_cast<int16_t*> p))
+							       (re :init (aref pi 0))
+							       (im :init (aref pi 1)))
+							   #+nil (macroexpand (e "i " i))
+							   (setf (aref m_fft_in i) (funcall "std::complex<float>"
+											     re im))
+							   (+= i 1)
+							   )
+							 ))))
+				   (if (&& (!= nullptr buf) reset)
+				      (statements (funcall iio_buffer_destroy buf)
+						  (setf buf nullptr)))))
 			    (return 0))
 
 		  ,@(dox :brief "close sdr device"
