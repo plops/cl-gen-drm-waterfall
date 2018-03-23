@@ -53,8 +53,23 @@ is replaced with replacement."
   `(let ((,f :type "std::ofstream" :ctor (comma-list (string ,(format nil "~a/~a" dir fn)))))
      ,@body))
 
+
+(defmacro benchmark (&body body)
+  `(let ((start :ctor (funcall current_time)))
+     ,@body
+     (macroexpand (e "time: " (* (/ 1.0 1000.0) (- (funcall current_time) start)) " ms"))
+     ))
+(defun rev (x nn)
+  (let ((n (floor (log nn 2)))
+      (res 0))
+  (dotimes (i n)
+    (setf (ldb (byte 1 i) res) (ldb (byte 1 (- n 1 i)) x)))
+  res))
+
+
 (progn
-  (let* ((code `(with-compilation-unit
+  (let* ((n 32)
+	 (code `(with-compilation-unit
 		    (with-compilation-unit
 			(raw "//! \\file main.cpp Draw to screen using linux direct rendering manager"))
 
@@ -73,7 +88,14 @@ is replaced with replacement."
 
 		  (raw " ")
 		  (include <iio.h>)
-		  
+
+		  (raw " ")
+		  (include <cmath>)
+		  (include <algorithm>)
+		  (include <array>)
+		  (include <complex>)
+		  (include <sys/time.h>) ;; gettimeofday
+
 		  (raw "//! This repository contains a minimal program to draw to a linux screen.")
 		  (raw "//! \\section Dependencies ")
 		  (raw "//! - Linux kernel with DRM driver")
@@ -93,6 +115,76 @@ is replaced with replacement."
 		       collect
 			 `(raw ,(format nil "//! ~a. ~a" i e)))
 
+		  (enum Constants (M_MAG_N ,n))
+
+		  (decl ((m_fft_in :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
+			 (m_fft_out :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
+			 (m_fft_out2 :type "std::array<std::complex<float>,M_MAG_N>"  :init (list (list ,@ (loop for i below n collect 0.0))))
+			 (m_fft_out_mag :type "std::array<float,M_MAG_N>" :init (list (list ,@ (loop for i below n collect 0.0))))
+			 ))
+		  (function (current_time () "static inline uint64_t")
+			    
+			    (let ((tv :type "struct timeval"))
+			      (funcall gettimeofday &tv nullptr)
+			      (return (+ (* tv.tv_sec 1000000)
+					 tv.tv_usec))))
+		  
+		  ;; https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm
+		  (function  (bit_reverse_copy ((in :type "const std::array<std::complex<float>, N > &")
+						(out :type "std::array<std::complex<float>, N > &"))
+					       "template<std::size_t N > void")
+			     (setf ,@(loop for i below n appending
+					  `((aref out ,(rev i n)) (aref in ,i)))))
+		  (function
+		   (fft ((in :type "const std::array<std::complex<float>, N > &")
+			 (out :type "std::array<std::complex<float>, N > &"))
+			"template<std::size_t N > void")
+		   (funcall bit_reverse_copy in out)
+		   ,@(loop for s from 1 upto (floor (log n 2)) appending
+			  (let ((m (expt 2 s)))
+			    `((let ((w_m :type "const auto" :init (funcall "std::complex<float>"
+									   ,(coerce (cos (/ (* pi -2) m)) 'single-float)
+									   ,(coerce (sin (/ (* pi -2) m)) 'single-float))))
+				(for ((k 0) (< k N) (+= k ,m))
+				     (let ((w :type "std::complex<float>" :ctor 1))
+				       (dotimes (j ,(/ m 2))
+					 (let ((t :ctor (* w (aref out (+ k j ,(/ m 2)))))
+					       (u :ctor (aref out (+ k j)))
+					       )
+					   (setf (aref out (+ k j)) (+ u t)
+						 (aref out (+ k j ,(/ m 2))) (- u t)
+						 w (* w w_m)))))))))
+			  ))
+		  
+		  #+nil
+		  (function (main () int)
+
+			    (statements
+			     (dotimes (i M_MAG_N)
+			       (setf (aref m_fft_in i) 0.0
+				     (aref m_fft_out i) 0.0
+				     (aref m_fft_out_mag i) 0.0))
+			     (setf (aref m_fft_in 1) 1.0)
+			     (macroexpand (benchmark
+					   (dotimes (i 10)
+					     (funcall ft m_fft_in m_fft_out)))))
+
+			    (statements
+			     (dotimes (i M_MAG_N)
+			       (setf (aref m_fft_in i) 0.0
+				     (aref m_fft_out2 i) 0.0
+				     (aref m_fft_out_mag i) 0.0))
+			     (setf (aref m_fft_in 1) 1.0)
+			     (macroexpand (benchmark
+					   (dotimes (i 10)
+					     (funcall fft m_fft_in m_fft_out2)))))
+			    
+			    #+nil (dotimes  (i M_MAG_N)
+				    (setf (aref m_fft_out_mag i) (funcall "std::abs" (aref m_fft_out i))))
+			    
+			    (dotimes (i M_MAG_N)
+			      (macroexpand (e (funcall "std::setw" 6) i (funcall "std::setw" 30) (aref m_fft_out i) (funcall "std::setw" 30) (aref m_fft_out2 i)))))
+		  
 		  ,@(dox :brief "initialize sdc acquisition"
 			 :usage "sets up rx and adc."
 			 :params '((uri "address of the iio device")
@@ -115,7 +207,7 @@ is replaced with replacement."
 				       (funcall iio_device_find_channel phy (string "voltage0") true)
 				       (string "sampling_frequency")
 				       fs)
-			     (return ctx)))
+			      (return ctx)))
 
 
 		  ,@(dox :brief "read from sdr device"
@@ -123,7 +215,7 @@ is replaced with replacement."
 			 :params '()
 			 :return "Integer")
 		  (function (pluto_read ((ctx :type "struct iio_context*"))
-					 int)
+					int)
 			    (let ((dev :init (funcall iio_context_find_device ctx (string "cf-ad9361-lpc")))
 				  (re :init (paren-list
 					     (let ((ch :init (funcall iio_device_find_channel
@@ -145,7 +237,10 @@ is replaced with replacement."
 				  (for ((p (funcall iio_buffer_first buf re))
 					(< p e)
 					(+= p d))
-				       
+				       (let ((pi :init (funcall reinterpret_cast<int16_t*> p))
+					     (re :init (aref pi 0))
+					     (im :init (aref pi 1))
+					     ))
 				       )))
 			      (funcall iio_buffer_destroy buf))
 			    (return 0))
@@ -166,7 +261,7 @@ is replaced with replacement."
 			 :params '((argc "input number of command line arguments")
 				   (argv "input"))
 			 :return "Integer")
-		  		  
+		  
 		  (function (main ((argc :type int)
 				   (argv :type char**))
 				  int)
@@ -230,11 +325,11 @@ is replaced with replacement."
 				       (raw "creq"))))
 				  (my_fb :init (paren-list
 						(let ((my_fb :type uint32_t :init 0))
-						    (funcall assert
-							     (! (funcall drmModeAddFB fd creq.width creq.height 24
-									 creq.bpp creq.pitch creq.handle &my_fb)))
-						    (raw
-						     "my_fb"))))
+						  (funcall assert
+							   (! (funcall drmModeAddFB fd creq.width creq.height 24
+								       creq.bpp creq.pitch creq.handle &my_fb)))
+						  (raw
+						   "my_fb"))))
 				  (flip :init (paren-list
 					       (let ((gp :type "struct drm_i915_getparam"
 							 )
@@ -247,9 +342,9 @@ is replaced with replacement."
 						   (if r
 						       (macroexpand (er
 
-								      "i915_getparam " r))))
+								     "i915_getparam " r))))
 						 (macroexpand (e
-								"flipping=" *gp.value))
+							       "flipping=" *gp.value))
 						 (raw "*gp.value"))))
 				  (mreq :init (paren-list
 					       (let ((mreq :type "struct drm_mode_map_dumb"))
@@ -262,11 +357,11 @@ is replaced with replacement."
 					      (let ((map :type uint32_t*
 							 :init (funcall static_cast<uint32_t*>
 									(funcall mmap 0 creq.size
-											(\| PROT_READ PROT_WRITE)
-											MAP_SHARED fd mreq.offset))))
-						  (funcall assert (!= MAP_FAILED map))
-						  (funcall memset map 0 creq.size)
-						  (raw "map")))))     
+										 (\| PROT_READ PROT_WRITE)
+										 MAP_SHARED fd mreq.offset))))
+						(funcall assert (!= MAP_FAILED map))
+						(funcall memset map 0 creq.size)
+						(raw "map")))))     
 			      
 			      (dotimes (i 256)
 				(dotimes (j 256)
@@ -275,11 +370,11 @@ is replaced with replacement."
 			      (funcall assert (! (funcall drmModeSetCrtc fd crtc->crtc_id my_fb
 							  0 0 &c->connector_id 1 &crtc->mode)))
 			      (dotimes (k 256)
-			       (dotimes (i creq.height)
-				 (dotimes (j creq.width)
-				   (setf (aref map (+ j (* i (>> creq.pitch 2))))
-					 (+ k (hex #x12345678)))))
-			       (funcall usleep 32000))
+				(dotimes (i creq.height)
+				  (dotimes (j creq.width)
+				    (setf (aref map (+ j (* i (>> creq.pitch 2))))
+					  (+ k (hex #x12345678)))))
+				(funcall usleep 32000))
 
 			      #+nil (funcall sleep 1)
 			      (funcall assert (! (funcall drmModeSetCrtc fd crtc->crtc_id fb->fb_id
