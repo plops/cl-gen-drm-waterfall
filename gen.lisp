@@ -68,7 +68,7 @@ is replaced with replacement."
 
 
 (progn
-  (let* ((n 1024)
+  (let* ((n 4192)
 	 (code `(with-compilation-unit
 		    (with-compilation-unit
 			(raw "//! \\file main.cpp Draw to screen using linux direct rendering manager"))
@@ -420,7 +420,7 @@ is replaced with replacement."
 								  (raw "ma"))))
 					   (s :init (/ 255s0 (- ma mi))))
 				       #+nil (macroexpand (e "ma " ma "mi " mi))
-				       (dotimes (j ,n #+nil creq.width)
+				       (dotimes (j (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
 					 (setf (aref map (+ j (* i (>> creq.pitch 2))))
 					       (* s (- (aref m_fft_out_mag j) mi))
 					       #+nil (+ k (hex #x12345678))))))))
