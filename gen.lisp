@@ -68,7 +68,7 @@ is replaced with replacement."
 
 
 (progn
-  (let* ((n 4192)
+  (let* ((n 512)
 	 (code `(with-compilation-unit
 		    (with-compilation-unit
 			(raw "//! \\file main.cpp Draw to screen using linux direct rendering manager"))
@@ -273,7 +273,8 @@ is replaced with replacement."
 
 			    
 			    (let ((errno :type "extern int")
-				  (pluto_ctx :init (funcall pluto_init (string "usb:1.5.5") 2412000000 50000000))
+				  (pluto_ctx :init (funcall pluto_init (aref argv 1) 94000000 #+nil 2412000000
+							    3839999 #+nil 30719999))
 				  (fd :init (paren-list (let ((fd :init (funcall drmOpen (string "i915") nullptr)))
 							  (if (< fd 0)
 							      (macroexpand (er "drmOpen error: fd=" fd " errno=" errno)))
@@ -391,27 +392,14 @@ is replaced with replacement."
 				  (macroexpand
 				   (benchmark
 				     
-				     
-				     (dotimes  (i M_MAG_N)
-				       (setf (aref m_fft_out_mag i) (* 10 (funcall
-									   "std::log10"
-									   (funcall "std::abs" (aref m_fft_out i))))))
-				     ))
-				  (macroexpand (e
-						 "out"))
-				  (macroexpand
-				   (benchmark
-				     
-				     
-				     
-				     (let ((mi :type "const auto" :init 50s0 #+nil (paren-list
+				     (let ((mi :type "const auto" :init 40s0 #+nil (paren-list
 								 (let ((mi :init (aref m_fft_out_mag 0)))
 								   (dotimes (i M_MAG_N)
 								     (let ((val :init (aref m_fft_out_mag i)))
 								       (if (< val mi)
 									   (setf mi val))))
 								   (raw "mi"))))
-					   (ma :type "const auto" :init 0s0 #+nil (paren-list
+					   (ma :type "const auto" :init 10s0 #+nil (paren-list
 								(let ((ma :init (aref m_fft_out_mag 0)))
 								  (dotimes (i M_MAG_N)
 								    (let ((val :init (aref m_fft_out_mag i)))
@@ -419,19 +407,51 @@ is replaced with replacement."
 									  (setf ma val))))
 								  (raw "ma"))))
 					   (s :init (/ 255s0 (- ma mi))))
-				       #+nil (macroexpand (e "ma " ma "mi " mi))
-				       (dotimes (j (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
-					 (let ((val :init (paren-list
+				      (dotimes  (i M_MAG_N)
+					(setf (aref m_fft_out_mag i)
+					      (* s (-
+						    (* 10 (funcall
+							   "std::log10"
+							   (funcall "std::abs" (aref m_fft_out i))))
+						    mi)))))))
+				  (macroexpand (e "out"))
+				  (macroexpand
+				   (benchmark				     
+				     #+nil (macroexpand (e "ma " ma "mi " mi))
+				     (dotimes (j (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
+				       (let ((val :type uint8_t :init (aref m_fft_out_mag j)
+						  #+nil (paren-list
+							 (let ((red :type "const auto" :init 4)
+							       (acc :init (aref m_fft_out_mag (* red j))))
+							   (dotimes (l red)
+							     (let ((v :init (aref m_fft_out_mag (+ l (* red j)) )))
+							       (if (< acc v)
+								   (setf acc v))))
+							   (raw "acc")))))
+					 (setf (aref map (+ j (* i (>> creq.pitch 2))))
+					       (<< val 8)
+					       #+nil (+ k (hex #x12345678)))))
+
+				     
+				     
+				     (if (< i (- creq.height 256))
+					 (statements
+					  (dotimes (ii 256)
+				       (dotimes (jj (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
+					 (setf (aref map (+ jj (* (+ 1 ii i) (>> creq.pitch 2))))
+					       (hex #x00000000))))
+					  (dotimes (j (funcall "std::min" ,n (funcall static_cast<int> creq.width)))
+					 (let ((val :type uint8_t :init (aref m_fft_out_mag j)
+						    #+nil (paren-list
 							   (let ((red :type "const auto" :init 4)
 								 (acc :init (aref m_fft_out_mag (* red j))))
 							     (dotimes (l red)
 							       (let ((v :init (aref m_fft_out_mag (+ l (* red j)) )))
-								(if (< acc v)
-								    (setf acc v))))
+								 (if (< acc v)
+								     (setf acc v))))
 							     (raw "acc")))))
-					  (setf (aref map (+ j (* i (>> creq.pitch 2))))
-						(* s (- val mi))
-						#+nil (+ k (hex #x12345678)))))))))
+					   (setf (aref map (+ j (* (+ 1 i val) (>> creq.pitch 2))))
+						 (hex #xffffffff)))))))))
 				#+nil (funcall usleep 32000))
 
 			      #+nil (funcall sleep 1)
