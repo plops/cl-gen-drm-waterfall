@@ -273,7 +273,9 @@ is replaced with replacement."
 
 			    
 			    (let ((errno :type "extern int")
-				  (pluto_ctx :init (funcall pluto_init (aref argv 1) 94000000 #+nil 2412000000
+				  (pluto_ctx :init (funcall pluto_init (aref argv 1)
+							    (funcall atoi (aref argv 2))
+							    #+nil 94000000 #+nil 2412000000
 							    3839999 #+nil 30719999))
 				  (fd :init (paren-list (let ((fd :init (funcall drmOpen (string "i915") nullptr)))
 							  (if (< fd 0)
@@ -467,10 +469,6 @@ is replaced with replacement."
 				      `(funcall drmFree ,e)))
 			      (funcall drmClose fd)
 			      (funcall pluto_close pluto_ctx))
-			    
-			    
-			    
-			    
 			    (return 0)))))
     (write-source "stage/cl-gen-drm-waterfall/source/main" "cpp" code)))
 
